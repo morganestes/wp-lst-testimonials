@@ -1,21 +1,53 @@
 <?php
 /*
   Plugin Name: Testimonials for LST
-  Version: 1.0
+  Version: 1.1
   Plugin URI: https://github.com/morganestes/wp-lst-testimonials
   Description: This plugin lets you add rotating testimonials to a page using a shortcode or widget. Originally developed by <a href="http://www.wpbeginner.com/wp-tutorials/how-to-add-rotating-testimonials-in-wordpress/" target="_blank">WPBeginner</a>; customized for LST by <a href="http://morganestes.me" target="_blank">Morgan Estes</a>.
   Author: Morgan Estes
   Author URI: http://morganestes.me/
  */
 
-if (! defined('LST_TESTIMONIALS_PLUGIN_URL'))
-  define ( 'LST_TESTIMONIALS_PLUGIN_URL', plugin_dir_url(__FILE__));
+if ( ! defined( 'LST_TESTIMONIALS_PLUGIN_URL' ) )
+	define( 'LST_TESTIMONIALS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 // Output something like: http://example.com/wp-content/plugins/your-plugin/
 
-if (!defined('LST_TESTIMONIALS_PLUGIN_PATH'))
-	define('LST_TESTIMONIALS_PLUGIN_PATH', plugin_dir_path(__FILE__));
+if ( ! defined( 'LST_TESTIMONIALS_PLUGIN_PATH' ) )
+	define( 'LST_TESTIMONIALS_PLUGIN_PATH', plugin_dir_path( __FILE__ ) );
 // Output something like: /home/mysite/www/wp-content/plugins/your-plugin/
 
+/**
+ * When using a widget, wp_head is already fired before the function is loaded,
+ *     so adding styles to the head isn't possible. Shortcodes are a different
+ *     matter. Using this function, we check to see if the shortcode is in use,
+ *     then load the CSS and JS into the page it's used on.
+ *
+ * @link http://beerpla.net/2010/01/13/wordpress-plugin-development-how-to-include-css-and-javascript-conditionally-and-only-when-needed-by-the-posts/
+ */
+add_filter( 'the_posts', 'conditionally_add_scripts_and_styles' ); // the_posts gets triggered before wp_head
+
+function conditionally_add_scripts_and_styles( $posts ) {
+	if ( empty( $posts ) )
+		return $posts;
+
+	$shortcode_found = false; // use this flag to see if styles and scripts need to be enqueued
+	foreach ( $posts as $post ) {
+		if ( stripos( $post->post_content, '[wpb_display_testimonials]' ) !== false ) {
+			$shortcode_found = true; // bingo!
+			break;
+		}
+	}
+
+	if ( $shortcode_found ) {
+		/* Use wp_enqueue_(scripts|styles) if css/js is external.
+		 * Since we have it inline below, we call the functions here.
+		 */
+		add_action( 'wp_head', 'lst_testimonial_style' );
+		add_action( 'wp_footer', 'lst_testimonial_script' );
+	}
+
+	return $posts;
+}
 
 function wpb_register_cpt_testimonial() {
 
@@ -64,7 +96,7 @@ add_action( 'init', 'wpb_register_cpt_testimonial' );
 function wpb_lst_testimonials_header() {
 	global $post_type;
 	echo '<style>';
-	if ( ($_GET[ 'post_type' ] == 'testimonial') || ($post_type == 'testimonial') ) {
+	if ( (isset( $_GET[ 'post_type' ] ) && ($_GET[ 'post_type' ] === 'testimonial')) || $post_type === 'testimonial' ) {
 		echo '#icon-edit {background: transparent url(' . LST_TESTIMONIALS_PLUGIN_URL . 'images/comments-32-grey.png) no-repeat !important;}';
 	}
 	echo '#menu-posts-testimonial:hover .wp-menu-image > img, #menu-posts-testimonial.wp-menu-open .wp-menu-image > img { content: url(' . LST_TESTIMONIALS_PLUGIN_URL . 'images/comments-16-blue.png) no-repeat center center; }';
@@ -140,41 +172,6 @@ add_action( 'save_post', 'wpb_save_meta_box' );
 // Display the testimonial on screen
 function wpb_display_testimonials() {
 	?>
-	<script>
-		jQuery(function($) {
-			setInterval(function() {
-				$('#testimonials .t-slide').filter(':visible').fadeOut(800, function() {
-					if( $(this).next('.t-slide').length ) {
-						$(this).next().fadeIn(800);
-					}
-					else {
-						$('#testimonials .t-slide').eq(0).fadeIn(800);
-					}
-				});
-			}, 6000);
-		});
-	</script>
-	<style>
-		#testimonials .t-slide {
-			color: #644f4b;
-			width: 90%;
-			padding: 0 15px;
-			margin: 0 auto;
-		}
-		#testimonials .client-contact-info {
-			margin: 0 25px 0 0;
-			float: right;
-		}
-		#testimonials blockquote {
-			padding: 3px 0 0 65px;
-			line-height: 1.5em;
-			font-family: "Lato", Helvetica, Arial, sans-serif !important;
-			font-size: 18px;
-			font-weight: normal;
-			font-style: italic;
-			margin: 10px 0 20px 0;
-		}
-	</style>
 	<div id="testimonials">
 		<?php
 		$args = array( 'post_type' => 'testimonial', 'posts_per_page' => 100, 'orderby' => 'menu_order', 'order' => 'ASC' );
@@ -187,17 +184,16 @@ function wpb_display_testimonials() {
 
 					<div class="t-slide" style="display: none;">
 						<blockquote><?php the_content(); ?>
-							<span class="client-contact-info"><?php echo $data[ 'person-name' ]; ?>,&nbsp;<?php echo $data[ 'location' ]; ?></a></span>
+							<span class="name"><?php echo $data[ 'person-name' ]; ?>,&nbsp;<?php echo $data[ 'location' ]; ?></a></span>
 						</blockquote>
 					</div>
 				<?php } else { ?>
 
 					<div class="t-slide">
 						<blockquote><?php the_content(); ?>
-							<span class="client-contact-info"><?php echo $data[ 'person-name' ]; ?>,&nbsp;<?php echo $data[ 'location' ]; ?></a></span>
+							<span class="name"><?php echo $data[ 'person-name' ]; ?>,&nbsp;<?php echo $data[ 'location' ]; ?></a></span>
 						</blockquote>
 					</div>
-
 
 					<?php
 					$count ++;
@@ -209,6 +205,51 @@ function wpb_display_testimonials() {
 
 	// Make shortcode available for use in front-end editor
 	add_shortcode( 'wpb_display_testimonials', 'wpb_display_testimonials' );
+
+	function lst_testimonial_style() {
+		?>
+		<style>
+			#testimonials .t-slide {
+				color: #644f4b;
+				width: 90%;
+				padding: 0 15px;
+				margin: 0 auto;
+			}
+			#testimonials .name {
+				margin: 0 25px 0 0;
+				float: right;
+			}
+			#testimonials blockquote {
+				padding: 3px 0 0 65px;
+				line-height: 1.5em;
+				font-family: "Lato", Helvetica, Arial, sans-serif !important;
+				font-size: 18px;
+				font-weight: normal;
+				font-style: italic;
+				margin: 10px 0 20px 0;
+			}
+		</style>
+		<?php
+	}
+
+	function lst_testimonial_script() {
+		?>
+		<script>
+			var lst_testimonials = jQuery(function($) {
+				setInterval(function() {
+					$('#testimonials .t-slide').filter(':visible').fadeOut(800, function() {
+						if( $(this).next('.t-slide').length ) {
+							$(this).next().fadeIn(800);
+						}
+						else {
+							$('#testimonials .t-slide').eq(0).fadeIn(800);
+						}
+					});
+				}, 6000);
+			});
+		</script>
+		<?php
+	}
 
 	/**
 	 * Adds Lst_Testimonials_Widget widget.
@@ -224,6 +265,10 @@ function wpb_display_testimonials() {
 					'LST Testimonials', // Name
 					array( 'description' => __( 'Display testimonials and rotate through them at intervals.', 'text_domain' ), ) // Args
 			);
+			if ( is_active_widget( false, false, $this->id_base ) ) {
+				add_action( 'wp_head', 'lst_testimonial_style' );
+				add_action( 'wp_footer', 'lst_testimonial_script' );
+			}
 		}
 
 		/**
@@ -242,7 +287,7 @@ function wpb_display_testimonials() {
 			if ( ! empty( $title ) ) {
 				echo $before_title . $title . $after_title;
 			}
-			echo do_shortcode( '[wpb_display_testimonials]' );
+			do_shortcode( '[wpb_display_testimonials]' );
 			echo $after_widget;
 		}
 
